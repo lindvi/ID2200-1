@@ -21,15 +21,27 @@
 
 pid_t child_pid;
 
-int pipe_printenv[2];
-int pipe_grep[2];
-int pipe_sort[2];
+int pipes[3][2];
+
+int pipeRead( int pipe ) {
+	if(close(pipes[pipe][PIPE_WRITE]) == -1)perror("pipeRead: Cannot close WRITE");
+	dup2(pipes[pipe][PIPE_READ], 0);
+	if(close(pipes[pipe][PIPE_READ]) == -1)	perror("pipeRead: Cannot close READ");
+
+	return 0;
+}
+
+int pipeWrite( int pipe ) {
+	if(close(pipes[pipe][PIPE_READ]) == -1)	perror("pipeWrite: Cannot close READ");
+	dup2(pipes[pipe][PIPE_WRITE], 1);
+	if(close(pipes[pipe][PIPE_WRITE]) == -1)perror("pipeWrite: Cannot close WRITE");
+	
+	return 0;
+}
 
 int main(int argc, char **argv, char **envp) {
 
-	int return_value;
-	
-	pipe(pipe_printenv); 
+	pipe(pipes[PRINTENV]); 
 
 	/*
 		PRINTENV
@@ -40,18 +52,11 @@ int main(int argc, char **argv, char **envp) {
 		/*
 			Skicka till nästa
 		*/
-		close(pipe_printenv[PIPE_READ]);
-		dup2(pipe_printenv[PIPE_WRITE], 1);
-		close(pipe_printenv[PIPE_WRITE]);
-
+		pipeWrite(PRINTENV);
 		execlp("printenv","printenv", NULL);
 	} 
-
-	close(pipe_printenv[PIPE_WRITE]);
-	dup2(pipe_printenv[PIPE_READ], 0);
- 	close(pipe_printenv[PIPE_READ]);
-
-	pipe(pipe_grep); 
+	pipeRead(PRINTENV);
+	pipe(pipes[GREP]); 
 
 
 	/*
@@ -59,20 +64,13 @@ int main(int argc, char **argv, char **envp) {
 	*/
 	child_pid = fork(); 
 	if(0 == child_pid) {
-			close(pipe_grep[PIPE_READ]);
-			dup2(pipe_grep[PIPE_WRITE], 1);
-			close(pipe_grep[PIPE_WRITE]);
-
+		pipeWrite(GREP);
 		if(argc > 1){
 			execvp("grep", argv);
 		}
 	} 
-
-	close(pipe_grep[PIPE_WRITE]);
-	dup2(pipe_grep[PIPE_READ], 0);
-	close(pipe_grep[PIPE_READ]);
-
-	pipe(pipe_sort); 
+	pipeRead(GREP);
+	pipe(pipes[SORT]); 
 
 
 	/*
@@ -80,10 +78,7 @@ int main(int argc, char **argv, char **envp) {
 	*/
 	child_pid = fork(); 
 	if(0 == child_pid) {
-			close(pipe_sort[PIPE_READ]);
-			dup2(pipe_sort[PIPE_WRITE], 1);
-			close(pipe_sort[PIPE_WRITE]);
-
+			pipeWrite(SORT);
 			execlp("sort", "sort", NULL);
 	} 
 
@@ -91,9 +86,7 @@ int main(int argc, char **argv, char **envp) {
 	/*
 		PAGER
 	*/
-	close(pipe_sort[PIPE_WRITE]);
-	dup2(pipe_sort[PIPE_READ], 0);
-	close(pipe_sort[PIPE_READ]);
+	pipeRead(SORT);
 
 
 	char* pager = getenv("PAGER");
@@ -101,5 +94,5 @@ int main(int argc, char **argv, char **envp) {
 		pager = "less";
 	}
 	execlp(pager, pager,NULL);
-
+	return 0;
 }
