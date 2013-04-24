@@ -14,33 +14,44 @@
 #define PIPE_READ 	(0)
 #define PIPE_WRITE 	(1)
 
-#define PRINTENV 	(0)
-#define GREP		(1)
-#define SORT		(2)
+#define PRINTENV 	(0)	// 
+#define GREP		(1)	// Identifikation för pipes (human readable)
+#define SORT		(2)	//
 
 
-pid_t child_pid;
+pid_t child_pid;		// Struct för PID info
+int pipes[3][2];		// Lagrar alla pipes (Printenv, grep och sort)
 
-int pipes[3][2];
 
 int pipeRead( int pipe ) {
-	if(close(pipes[pipe][PIPE_WRITE]) == -1)perror("pipeRead: Cannot close WRITE");
+	// Stäng read-änden av pipen för att signalera till den mottagande att vi är klara med att lyssna
+	if(close(pipes[pipe][PIPE_WRITE]) == -1) {
+		perror("pipeRead: Cannot close WRITE");
+		return -1;
+	}
 	dup2(pipes[pipe][PIPE_READ], 0);
-	if(close(pipes[pipe][PIPE_READ]) == -1)	perror("pipeRead: Cannot close READ");
-
+	
+	if(close(pipes[pipe][PIPE_READ]) == -1) {
+		perror("pipeRead: Cannot close READ");
+		return -1;
+	}
 	return 0;
 }
 
 int pipeWrite( int pipe ) {
-	if(close(pipes[pipe][PIPE_READ]) == -1)	perror("pipeWrite: Cannot close READ");
+	if(close(pipes[pipe][PIPE_READ]) == -1)	
+		perror("pipeWrite: Cannot close READ");
+	
 	dup2(pipes[pipe][PIPE_WRITE], 1);
-	if(close(pipes[pipe][PIPE_WRITE]) == -1)perror("pipeWrite: Cannot close WRITE");
+	
+	if(close(pipes[pipe][PIPE_WRITE]) == -1)
+		perror("pipeWrite: Cannot close WRITE");
 	
 	return 0;
 }
 
 int main(int argc, char **argv, char **envp) {
-
+	int DBG = 1;
 	pipe(pipes[PRINTENV]); 
 
 	/*
@@ -48,45 +59,48 @@ int main(int argc, char **argv, char **envp) {
 	*/
 	child_pid = fork(); 
 	if(0 == child_pid) {
-
+		if(DBG)printf("[INFO] Printenv Child\n");
 		/*
 			Skicka till nästa
 		*/
 		pipeWrite(PRINTENV);
 		execlp("printenv","printenv", NULL);
-	} 
+	}
+	if(DBG)printf("[INFO] Printenv Parent\n");
 	pipeRead(PRINTENV);
-	pipe(pipes[GREP]); 
 
 
 	/*
 		GREP
 	*/
-	child_pid = fork(); 
-	if(0 == child_pid) {
-		pipeWrite(GREP);
-		if(argc > 1){
+	if(argc > 1) {
+		pipe(pipes[GREP]); 
+		child_pid = fork(); 
+		if(0 == child_pid) {
+			if(DBG)printf("[INFO] Grep Child\n");
 			execvp("grep", argv);
-		}
-	} 
-	pipeRead(GREP);
-	pipe(pipes[SORT]); 
-
+		} 
+		if(DBG)printf("[INFO] Grep Parent\n");
+		pipeRead(GREP);
+	}
 
 	/*
-		GREP
+		SORT
 	*/
+	pipe(pipes[SORT]); 
 	child_pid = fork(); 
 	if(0 == child_pid) {
+			if(DBG)printf("[INFO] Sort Child\n");
 			pipeWrite(SORT);
 			execlp("sort", "sort", NULL);
 	} 
-
+	if(DBG)printf("[INFO] Sort Parent\n");
+	pipeRead(SORT);
 
 	/*
 		PAGER
 	*/
-	pipeRead(SORT);
+	
 
 
 	char* pager = getenv("PAGER");
