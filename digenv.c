@@ -21,13 +21,15 @@
 
 pid_t child_pid;
 
-int pipe_filedesc[2];
+int pipe_printenv[2];
+int pipe_grep[2];
+int pipe_sort[2];
 
 int main(int argc, char **argv, char **envp) {
 
 	int return_value;
 	
-	return_value = pipe(pipe_filedesc); 
+	return_value = pipe(pipe_printenv); 
 	if(-1 == return_value) { 
 		perror("Cannot create pipe"); 
 		exit(1); 
@@ -42,14 +44,14 @@ int main(int argc, char **argv, char **envp) {
 		/*
 			Skicka till nästa
 		*/
-		return_value = close(pipe_filedesc[PIPE_READ]);
+		return_value = close(pipe_printenv[PIPE_READ]);
 	    if( -1 == return_value )
 	    { 
 	    	perror( "Cannot close pipe" ); 
 			exit( 1 ); 
 		}
-		dup2(pipe_filedesc[PIPE_WRITE], 1);
-		return_value = close(pipe_filedesc[PIPE_WRITE]);
+		dup2(pipe_printenv[PIPE_WRITE], 1);
+		return_value = close(pipe_printenv[PIPE_WRITE]);
 		if( -1 == return_value )
 	    { 
 	    	perror( "Cannot close pipe" ); 
@@ -58,21 +60,116 @@ int main(int argc, char **argv, char **envp) {
 		execlp("printenv","printenv", NULL);
 	} 
 
-
-	return_value = close(pipe_filedesc[PIPE_WRITE]);
+	return_value = close(pipe_printenv[PIPE_WRITE]);
 	if( -1 == return_value )
 	    { 
 	    	perror( "Cannot close pipe" ); 
 			exit( 1 ); 
 		}
-	dup2(pipe_filedesc[PIPE_READ], 0);
-	return_value = close(pipe_filedesc[PIPE_READ]);
+	dup2(pipe_printenv[PIPE_READ], 0);
+	return_value = close(pipe_printenv[PIPE_READ]);
 	if( -1 == return_value )
 	    { 
 	    	perror( "Cannot close pipe" ); 
 			exit( 1 ); 
 		}
 
-	execlp("less","less",NULL);
+
+	return_value = pipe(pipe_grep); 
+	if(-1 == return_value) { 
+		perror("Cannot create pipe"); 
+		exit(1); 
+	}
+
+
+	/*
+		GREP
+	*/
+	child_pid = fork(); 
+	if(0 == child_pid) {
+			return_value = close(pipe_grep[PIPE_READ]);
+		    if( -1 == return_value )
+		    { 
+		    	perror( "Cannot close pipe" ); 
+				exit( 1 ); 
+			}
+			dup2(pipe_grep[PIPE_WRITE], 1);
+			return_value = close(pipe_grep[PIPE_WRITE]);
+			if( -1 == return_value )
+		    { 
+		    	perror( "Cannot close pipe" ); 
+				exit( 1 ); 
+			}
+		if(argc > 1){
+			execvp("grep", argv);
+		}
+	} 
+
+	return_value = close(pipe_grep[PIPE_WRITE]);
+	if( -1 == return_value )
+	    { 
+	    	perror( "Cannot close pipe" ); 
+			exit( 1 ); 
+		}
+	dup2(pipe_grep[PIPE_READ], 0);
+	return_value = close(pipe_grep[PIPE_READ]);
+	if( -1 == return_value )
+	    { 
+	    	perror( "Cannot close pipe" ); 
+			exit( 1 ); 
+		}
+
+
+	return_value = pipe(pipe_sort); 
+	if(-1 == return_value) { 
+		perror("Cannot create pipe"); 
+		exit(1); 
+	}
+
+
+	/*
+		GREP
+	*/
+	child_pid = fork(); 
+	if(0 == child_pid) {
+			return_value = close(pipe_sort[PIPE_READ]);
+		    if( -1 == return_value )
+		    { 
+		    	perror( "Cannot close pipe" ); 
+				exit( 1 ); 
+			}
+			dup2(pipe_sort[PIPE_WRITE], 1);
+			return_value = close(pipe_sort[PIPE_WRITE]);
+			if( -1 == return_value )
+		    { 
+		    	perror( "Cannot close pipe" ); 
+				exit( 1 ); 
+			}
+			execlp("sort", "sort", NULL);
+	} 
+
+
+	/*
+		PAGER
+	*/
+	return_value = close(pipe_sort[PIPE_WRITE]);
+	if( -1 == return_value )
+	    { 
+	    	perror( "Cannot close pipe" ); 
+			exit( 1 ); 
+		}
+	dup2(pipe_sort[PIPE_READ], 0);
+	return_value = close(pipe_sort[PIPE_READ]);
+	if( -1 == return_value )
+	    { 
+	    	perror( "Cannot close pipe" ); 
+			exit( 1 ); 
+		}
+
+	char* pager = getenv("PAGER");
+	if(pager == NULL){
+		pager = "less";
+	}
+	execlp(pager, pager,NULL);
 
 }
