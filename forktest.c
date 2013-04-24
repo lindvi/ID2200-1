@@ -17,6 +17,7 @@ int main()
   childpid = fork();
   if( 0 == childpid )
   {
+    fprintf(stderr, "%s\n", "YES!");
     /* denna kod körs endast i child-processen */
   }
   else
