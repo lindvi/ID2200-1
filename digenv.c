@@ -4,6 +4,19 @@
 - Samma för metoderna
 - Kommentar för alla variabler
 - Kommentarer vid icke trivial kod
+
+	digenv.c
+================
+	Programmet utför följande kommando: 
+	"printenv | grep [parameter] | sort | less"	
+	alternativt: 
+	"printenv | sort | less" om ingen parameter angivits.
+
+	Syftet med denna kod är att få förståelse för hur pipes fungerar i linux
+	och hur man använder dom i kod.
+
+	CHANGELOG:
+	- Behöver bara en fdarray för pipes.
  */
 
 #include <stdio.h>
@@ -14,97 +27,99 @@
 #define PIPE_READ 	(0) // Identifikation för kanaler i pipes (human readable)
 #define PIPE_WRITE 	(1) // 
 
-#define PRINTENV 	(0)	// 
-#define GREP		(1)	// Identifikation för pipes (human readable)
-#define SORT		(2)	//
+#define DBG			(1) // För utskrivning av debuggmeddelanden
 
 
 pid_t child_pid;		// Struct för PID info
-int pipes[3][2];		// Lagrar alla pipes (Printenv, grep och sort)
+int pipefd[2];			// Array för att lagra file descriptor till pipes
 
-
-/*	pipeRead( int pipe )
-	int pipe - vilken pipe som skall modifieras (i enlighet med de fördefinierade pipesen)
-	Sköter pipe:en i fråga för läsning från 
-*/
-int pipeRead( int pipe ) {
-	// Stäng write-änden av pipen för att signalera till den mottagande att vi är klara med att lyssna
-	if(close(pipes[pipe][PIPE_WRITE]) == -1) {
-		// Om fel uppstod, skriv ut felmeddelande och returnera -1
-		perror("pipeRead: Cannot close WRITE");
+int createPipe() {
+	if(pipe(pipefd) < 0) {
+		perror("createPipe: Error occured while creating pipe...");
 		return -1;
 	}
-
-	// Styr om readänden av pipen till stdin
-	dup2(pipes[pipe][PIPE_READ], 0);
-	
-	// Stäng read-änden av pipen för att signalera till den mottagande att vi är klara med att lyssna
-	if(close(pipes[pipe][PIPE_READ]) == -1) {
-		// Om fel uppstod, skriv ut felmeddelande och returnera -1
-		perror("pipeRead: Cannot close READ");
-		return -1;
-	}
-	// Allt har gått bra! Returnera 0!
 	return 0;
 }
 
-/*	pipeWrite( int pipe )
-	int pipe - vilken pipe som skall modifieras
+/*	pipeRead()
+	Gör följande: 
+	1. Stänger pipen för skrivning
+	2. Styr om stdout till stdin
+	3. Stänger pipen för läsning för att på så sätt signalera till den andra änden att den är klar.
 */
-int pipeWrite( int pipe ) {
-	if(close(pipes[pipe][PIPE_READ]) == -1)	
-		perror("pipeWrite: Cannot close READ");
+int pipeRead() {
+	if(close(pipefd[PIPE_WRITE]) == -1) {
+		perror("pipeRead: Cannot close WRITE");	// Fel har uppstått! Skriv meddelande i terminalen
+		return -1;								// Returnera -1
+	}
 	
-	// Styr om writeänden av pipen till stout
-	dup2(pipes[pipe][PIPE_WRITE], 1);
+	dup2(pipefd[PIPE_READ], 0);					// Styr om stdin till pipen
+		
+	//if(close(pipefd[PIPE_READ]) == -1) {
+	//	perror("pipeRead: Cannot close READ");	// Fel har uppstått! Skriv meddelande i terminalen
+	//	return -1;								// Returnera -1
+	//}
+	return 0;									// Allt har gått bra! Returnera 0
+}
+
+/*	pipeWrite()
+	Gör följande: 
+	1. Stänger pipen för läsning
+	2. Styr om stdin till stdout
+	3. Stänger pipen för skrivning för att på så sätt signalera till den andra änden att den är klar.
+*/
+int pipeWrite() {
+	if(close(pipefd[PIPE_READ]) == -1) {
+		perror("pipeWrite: Cannot close READ");	// Fel har uppstått! Skriv meddelande i terminalen
+		return -1;								// Returnera -1
+	}
 	
-	if(close(pipes[pipe][PIPE_WRITE]) == -1)
-		perror("pipeWrite: Cannot close WRITE");
+	dup2(pipefd[PIPE_WRITE], 1);				// Styr om stdout till pipen
 	
+	//if(close(pipefd[PIPE_WRITE]) == -1) {
+	//	perror("pipeWrite: Cannot close WRITE");// Fel har uppstått! Skriv meddelande i terminalen
+	//	return -1;								// Returnera -1
+	//}	
 	return 0;
 }
 
 int main(int argc, char **argv, char **envp) {
-	int DBG = 1;
-	pipe(pipes[PRINTENV]); 
+	if(createPipe() < 0) exit(1);	// Skapar en pipe, avslutar vid fel
 
 	/*  PRINTENV  */
 	child_pid = fork(); 
 	if(0 == child_pid) {
 		if(DBG)printf("[INFO] Printenv Child\n");
-		// Skicka till nästa
-		pipeWrite(PRINTENV);
+		pipeWrite();
 		execlp("printenv","printenv", NULL);
 	}
 	if(DBG)printf("[INFO] Printenv Parent\n");
-	pipeRead(PRINTENV);
+	pipeRead();
 
 
 	/*  GREP  */
-	
 	if(argc > 1) {
-		pipe(pipes[GREP]); 
+		if(createPipe() < 0) exit(1);	// Skapar en pipe, avslutar vid fel
 		child_pid = fork(); 
 		if(0 == child_pid) {
 			if(DBG)printf("[INFO] Grep Child\n");
-			pipeWrite(GREP);
+			pipeWrite();	// GREP
 			execvp("grep", argv);
 		} 
 		if(DBG)printf("[INFO] Grep Parent\n");
-		pipeRead(GREP);
+		pipeRead();		// GREP
 	}
 
 	/*  SORT  */
-
-	pipe(pipes[SORT]); 
+	if(createPipe() < 0) exit(1);	// Skapar en pipe, avslutar vid fel
 	child_pid = fork(); 
 	if(0 == child_pid) {
 			if(DBG)printf("[INFO] Sort Child\n");
-			pipeWrite(SORT);
+			pipeWrite();	// SORT
 			execlp("sort", "sort", NULL);
 	} 
 	if(DBG)printf("[INFO] Sort Parent\n");
-	pipeRead(SORT);
+	pipeRead();		// SORT
 
 	/*
 		PAGER
